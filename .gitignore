@@ -1,0 +1,14 @@
+.DS_Store
+.idea
+*.log
+tmp/
+
+.auctex-auto/
+*.aux
+*.nav
+*.out
+*.pdf
+*.snm
+*.gz
+*.toc
+_region_.tex
