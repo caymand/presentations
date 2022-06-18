@@ -1,8 +1,13 @@
 \documentclass{beamer}
+\input{premble.tex}
+
+\usetheme{Madrid}
+\usecolortheme{beaver}
 
 \title{Bachelor forsvar}
+\subtitle{Udnyttelse af ISPC på Futharks multicore backend}
 \author{Kristoffer A. Kortbaek}
-\date{\today}
+\date{23. juni 2022}
 
 %%Front page
 \begin{document}
@@ -10,19 +15,146 @@
   \titlepage
 \end{frame}
 
-%% Slide 1
+%% Slide 0
 \begin{frame}
-  \frametitle{ISPC parallel programmeringsmodel}
+  \frametitle{Udnyttelse af language C-quote}
+\end{frame}
+
+%%Slide 1
+\begin{frame}[fragile]
+  \frametitle{Multicore flattening - sekventielle og parallelle SOACs}
+  Når en SOAC har nested parallelisme, og dermed indeholder indre SOACs, så genereres to versioner
+  \begin{enumerate}
+    \item{Hver indre SOAC er blevet sekventialiseret}
+    \item{De indre SOACs er uberørte og kører i parallel på flere kerner}
+  \end{enumerate}
+
+  \begin{lstlisting}[language=futhark]
+    def main m n  (X:[m][n]i32)  (v:[n]i32)  =
+      map (\x ->
+        reduce (+) 0 (map2 (*) x v)
+      ) X
+    \end{lstlisting}
+    Hvis den ydre \texttt{map} indeholder flere iterationer end antal logiske kerner på CPUen sekventialiseres \texttt{reduce}
+
+  \end{frame}
+
+\begin{frame}[fragile]
+  \begin{itemize}
+  \item Sekventialiseret
+    \begin{lstlisting}[language=ispc]
+        for(int map_i = 0; i < map_end; map_i++) {
+          int red_res = 0; //Neutral element
+          for(int red_i = 0;  red_end; red_i++) {
+            int x = mem[map_i * n + red_i];
+            int v_i = mem[red_i];
+            int mul_res = x * v_i;
+            red_res = mulres + red_res;
+          }
+          mem[map_i] = red_res;
+        }
+      \end{lstlisting}
+    \item Parallel nested \texttt{reduce}
+      \begin{lstlisting}[language=ispc]
+        //map
+        for(int map_i = 0; i < map_end; map_i++) {
+          // schedule work for the nested reduce
+          mem[map_i] = reduce_res;
+        }
+        //reduce
+        for(int red_i = 0;  red_end; red_i++) {
+          int x = mem[map_i * n + red_i];
+          int v_i = mem[red_i];
+          int mul_res = x * v_i;
+          red_res = mulres + red_res;
+        }
+      \end{lstlisting}
+
+  \end{itemize}
+
 \end{frame}
 
 %% Slide 2
 \begin{frame}
-  \frametitle{Vectorized algorithms}
+  \frametitle{Vektoriseret \texttt{reduce}}
+  \begin{enumerate}
+  \item Begge versioner af en given SOAC kan tage gavn af data parallelisme
+  \item Vi udvider ISPC i vores backend for at hver tråd udnytter data parallelisme
+  \item Hver parallel SOAC i Futhark har en speciel vektoriseret algoritme
+  \item Særligt har \texttt{reduce} fire forskellige kodegenereringer
+    \begin{itemize}
+    \item kommutative \texttt{reduce}
+    \item normal(ikke kommutative) \texttt{reduce}
+    \item \texttt{reduce} på en ``mapped'' operator
+    \item Ingen brug af vektorisering
+    \end{itemize}
+  \end{enumerate}
 \end{frame}
 
-%% Slide 3
+\begin{frame}[fragile]
+  \frametitle{Kommutative reduktioner}
+  \begin{block}{Kommutative reduktioner genereres der særligt effektiv kode for}
+  \begin{enumerate}
+    \item Den binære operator kan ske i vilkårlig rækkefølge: $a + b = b + a$
+    \item Hver \textit{program instance} kan arbejde på sit eget segment af inputtet
+  \end{enumerate}
+  \end{block}
+Givet et input array
+\begin{figure}[h!]
+  \centering
+  \includegraphics[width=0.5\textwidth]{input.png}
+\end{figure}
+  Kan vi ved en vectoriseret algoritme behandle den i tre trind
+  \begin{columns}
+    \column{0.5\textwidth}
+  \begin{figure}[h!]
+    \centering
+    \includegraphics[width=0.7\textwidth]{kom_reduction.png}
+  \end{figure}
+
+  \column{0.4\textwidth}
+  \begin{lstlisting}[language=futhark]
+    reduce (+) 0 as
+  \end{lstlisting}
+
+  % \begin{align*}
+  %   \texttt{reduce}: \hspace{0.5cm} &(\alpha \rightarrow \alpha \rightarrow \alpha) \rightarrow \alpha \rightarrow [n]\alpha \rightarrow \alpha
+  % \end{align*}
+  \end{columns}
+\end{frame}
+\begin{frame}[fragile]
+  \frametitle{Kompileret program}
+  \begin{lstlisting}[language=futhark]
+    reduce (+) 0 as
+  \end{lstlisting}
+  Hver program instance kan lave siden egen reduktion.
+  \begin{lstlisting}[language=ispc]
+    int acc = 0;
+    uniform int uni_acc = 0;
+    foreach(Reduce_i = 0 ... n) {
+      int a = mem[Reduce_i];
+      int res = acc + a;
+      acc = res;
+    }
+    foreach_active{i = 0 ... programCount} {
+      uniform int a = extract(acc, i);
+      uniformint res = uni_acc + a
+      uni_acc = res;
+    }
+    mem_out[out] = uni_acc;
+  \end{lstlisting}
+  %Nævn der ikke er en garanti for rækkefølgen af program instansernes operatioenr
+
+\end{frame}
+
+\begin{frame}[fragile]
+  \frametitle{Associative reduktioner}
+  Rækkefølgen af den binære operator har betydning
+\end{frame}
+
+%% Slide 32
 \begin{frame}
-  \frametitle{Memory allocations and flattening}
+  \frametitle{Memory allocations}
 \end{frame}
 
 \end{document}
