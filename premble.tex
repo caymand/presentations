@@ -1,0 +1,93 @@
+\usepackage{listings}
+\usepackage{graphicx}
+%\tcbset{
+%texexp/.style={
+%fonttitle=\small\sffamily\bfseries, fontupper=\small, fontlower=\small},
+%example/.code 2 args={\refstepcounter{texexp}\label{#2}%
+%    \pgfkeysalso{texexp,title={Listing \thetexexp: #1}}},
+%}
+
+%Define Colors
+\definecolor{gray}{RGB}{102,102,102}		%#666666
+\definecolor{lightblue}{RGB}{0,102,153}		%#006699
+\definecolor{lightgreen}{RGB}{102,153,0}	%#669900
+\definecolor{bluegreen}{RGB}{51,153,126}	%#33997e
+\definecolor{magenta}{RGB}{217,74,122}		%#d94a7a
+\definecolor{orange}{RGB}{226,102,26}		%#e2661a
+\definecolor{purple}{RGB}{181, 0, 209}		%#7d4793
+\definecolor{green}{RGB}{113,138,98}		%#718a62
+
+% solarized https://en.wikipedia.org/wiki/Solarized
+\definecolor{sblue}{RGB}{38,139,210}
+\definecolor{syellow}{RGB}{181,137,0}
+\definecolor{sgreen}{RGB}{113,163,0}
+\definecolor{sviolet}{RGB}{108,113,196}
+
+
+\lstdefinelanguage{ispc}{
+  %Types
+  morekeywords = [1]{int16, int32, int64, uint, uint16, uint32, uint64, int8, uint8, void, int, float, double, float16, int64\_t, int32\_t, char, uint32\_t, memblock, futhark\_context, free\_struct, fs\_struct, mem\_struct, my\_struct *},
+  %Control flow
+  morekeywords = [2]{catch, do, for, if, else, switch, while, foreach, foreach\_active, cif, return},
+  %Qualifiers and stuff
+  morekeywords = [3]{uniform, varying, export, extern, struct, unmasked, static, inline, unsigned},
+  % Remaining functions
+  morekeywords = [4]{extract, insert, reduce\_add, programIndex, programCount, reduce\_op, bin\_op, scan\_op, map\_op},
+  keywordstyle = [1]\color{syellow}\bfseries,
+  keywordstyle = [2]\color{sgreen}\bfseries,
+  keywordstyle = [3]\color{sblue}\bfseries,
+  keywordstyle = [4]\color{sviolet}\bfseries,
+  sensitive = true,
+  morecomment = [l]{//},
+  morecomment = [s]{/*}{*/},
+  morecomment = [s]{/**}{*/},
+  commentstyle = \color{gray},
+  morestring = [b]",
+  morestring = [b]',
+  stringstyle = \color{orange}
+}
+
+\lstdefinelanguage{futhark}{
+  %Types
+  morekeywords = [1]{f32, f64, i32, i64, void, int, float, double, float16, int64\_t, int32\_t, char, uint32\_t, memblock, futhark\_context, free\_struct, fs\_struct, mem\_struct, my\_struct *},
+  %Control flow
+  morekeywords = [2]{loop, let, def, catch, do, for, if, else, switch, while, foreach, foreach\_active, cif, return},
+  %Qualifiers and stuff
+  morekeywords = [3]{map, scan, reduce, reduce_by_index, uniform, varying, export, extern, struct, unmasked, static, inline, unsigned},
+  % Remaining functions
+  morekeywords = [4]{extract, insert, reduce\_add, programIndex, programCount, reduce\_op, bin\_op, scan\_op, map\_op},
+  keywordstyle = [1]\color{syellow}\bfseries,
+  keywordstyle = [2]\color{sgreen}\bfseries,
+  keywordstyle = [3]\color{sblue}\bfseries,
+  keywordstyle = [4]\color{sviolet}\bfseries,
+  sensitive = true,
+  morecomment = [l]{//},
+  morecomment = [l]{--},
+  morecomment = [s]{/*}{*/},
+  morecomment = [s]{/**}{*/},
+  commentstyle = \color{gray},
+  morestring = [b]",
+  morestring = [b]',
+  stringstyle = \color{orange}
+}
+
+\usepackage{courier}
+
+\lstset{
+  basicstyle={\ttfamily\footnotesize},
+  identifierstyle={\ttfamily},
+  commentstyle={\itshape\ttfamily},
+  keywordstyle={\bfseries},
+  ndkeywordstyle={\bfseries},
+  stringstyle={\ttfamily},
+  breaklines=true,
+  %columns=[l]{fullflexible},
+  numbers=left,
+  xrightmargin=0em,
+  xleftmargin=2mm,
+  numberstyle={\scriptsize},
+  stepnumber=1,
+  numbersep=1em,
+  lineskip=-0.5ex,
+  tabsize=4
+}
