@@ -1,11 +1,11 @@
-\documentclass{beamer}
+\documentclass[t]{beamer}
 \input{premble.tex}
 
 \usetheme{Madrid}
 \usecolortheme{beaver}
 
 \title{Bachelor forsvar}
-\subtitle{Udnyttelse af ISPC på Futharks multicore backend}
+\subtitle{En ISPC bagende til Futhark}
 \author{Kristoffer A. Kortbaek}
 \date{23. juni 2022}
 
@@ -15,12 +15,16 @@
   \titlepage
 \end{frame}
 
-%% Slide 0
+%% Slide 1
 \begin{frame}
-  \frametitle{Udnyttelse af language C-quote}
+MC IR indeholder to versioner af hver SOAC
+  \frametitle{Multicore flattening background}
+  \begin{figure}[H]
+    \centering
+    \includegraphics[height=0.7\textheight]{imgs/compileroverview.png}
+  \end{figure}
 \end{frame}
 
-%%Slide 1
 \begin{frame}[fragile]
   \frametitle{Multicore flattening - sekventielle og parallelle SOACs}
   Når en SOAC har nested parallelisme, og dermed indeholder indre SOACs, så genereres to versioner
@@ -41,7 +45,7 @@
 
 \begin{frame}[fragile]
   \begin{itemize}
-  \item Sekventialiseret
+  \item Sekventialiseret - \texttt{map} kører i parallel på hver logiske kerne
     \begin{lstlisting}[language=ispc]
         for(int map_i = 0; i < map_end; map_i++) {
           int red_res = 0; //Neutral element
@@ -54,7 +58,7 @@
           mem[map_i] = red_res;
         }
       \end{lstlisting}
-    \item Parallel nested \texttt{reduce}
+    \item Parallel nested \texttt{reduce} - den indre \texttt{reduce} kører også parallel
       \begin{lstlisting}[language=ispc]
         //map
         for(int map_i = 0; i < map_end; map_i++) {
@@ -73,15 +77,44 @@
   \end{itemize}
 
 \end{frame}
+\begin{frame}[fragile]
+  \frametitle{Kan vi udnytte mere parallelisme?}
+  Brug ISPC til at udvide både de sekventielle og nestede SOACs
+  \begin{enumerate}
+    \item Hver tråds arbejde skal køre i ISPC - en såkaldt \textit{ISPC kernel}
+    \item Benyt \texttt{foreach} hvor muligt
+  \end{enumerate}
+  Vi prøvede forskellige måde at udnytte  language-c-quote til at generere selve ISPC koden
+  \begin{enumerate}
+    \item Genrer C kode og lav makroer i ISPC
+          \begin{lstlisting}[language=ispc, xleftmargin=-20mm]
+            #define auto uniform
+          \end{lstlisting}
+    \item Udvid language-c-quote med ISPC sprog konstruktioner
+          \begin{lstlisting}[xleftmargin=-20mm]
+            [C.cstm|foreach ($foreachiters:bounds) {$items:body}|]
+          \end{lstlisting}
+    \item Brug ecaped statements
+          \begin{lstlisting}[xleftmargin=-20mm]
+            [C.cstms|$escstm:("foreach (i=0 ... end)") { $items:body}|]
+          \end{lstlisting}
+  \end{enumerate}
+
+
+\end{frame}
 
 %% Slide 2
+
 \begin{frame}
-  \frametitle{Vektoriseret \texttt{reduce}}
+  \frametitle{Algoritmer til at udvide Futhark MC flattening}
+  Hvordan kan man vektorisere de to forskellige versioner af en SOAC?
   \begin{enumerate}
-  \item Begge versioner af en given SOAC kan tage gavn af data parallelisme
-  \item Vi udvider ISPC i vores backend for at hver tråd udnytter data parallelisme
-  \item Hver parallel SOAC i Futhark har en speciel vektoriseret algoritme
-  \item Særligt har \texttt{reduce} fire forskellige kodegenereringer
+    %\item Vores kodegenerator er ``dum'' omkring hvorvidt vi laver kode for en nested eller sekventialiseret SOAC
+  % \item Begge versioner af en given SOAC kan tage gavn af data parallelisme
+  % \item Vi udnytter et ekstra lag af parallelisme ved at lade hver tråd udnytte data parallelisme
+  \item Giv hver SOAC en specifik vectoriseret algoritme afhængigt af operatoren
+  \item Håndter scheduling fra ISPC
+  Særligt har redomap fire forskellige kodegenereringer
     \begin{itemize}
     \item kommutative \texttt{reduce}
     \item normal(ikke kommutative) \texttt{reduce}
@@ -93,40 +126,39 @@
 
 \begin{frame}[fragile]
   \frametitle{Kommutative reduktioner}
-  \begin{block}{Kommutative reduktioner genereres der særligt effektiv kode for}
+  \begin{block}{Kommutative Reduktioner genereres der særligt effektiv kode for}
   \begin{enumerate}
     \item Den binære operator kan ske i vilkårlig rækkefølge: $a + b = b + a$
+          %Nævn at i vores rapport kalder vi det interleaved
     \item Hver \textit{program instance} kan arbejde på sit eget segment af inputtet
   \end{enumerate}
-  \end{block}
-Givet et input array
-\begin{figure}[h!]
-  \centering
-  \includegraphics[width=0.5\textwidth]{input.png}
-\end{figure}
-  Kan vi ved en vectoriseret algoritme behandle den i tre trind
+\end{block}
+\begin{onlyenv}<+->
+  Simple reduktion over input array
   \begin{columns}
-    \column{0.5\textwidth}
-  \begin{figure}[h!]
-    \centering
-    \includegraphics[width=0.7\textwidth]{kom_reduction.png}
-  \end{figure}
+  \column{0.49\textwidth}
+  \begin{figure}[H]
+  \centering
+  \includegraphics[width=0.9\textwidth]{imgs/input.png}
+\end{figure}
+\column{0.49\textwidth}
 
-  \column{0.4\textwidth}
   \begin{lstlisting}[language=futhark]
     reduce (+) 0 as
   \end{lstlisting}
 
-  % \begin{align*}
-  %   \texttt{reduce}: \hspace{0.5cm} &(\alpha \rightarrow \alpha \rightarrow \alpha) \rightarrow \alpha \rightarrow [n]\alpha \rightarrow \alpha
-  % \end{align*}
-  \end{columns}
+\end{columns}
+\end{onlyenv}
+\begin{onlyenv}<+->
+  Den vectoriserede algoritme for kommutative \texttt{redomap}s har 3 skridt
+  \begin{figure}[h!]
+    \centering
+    \includegraphics[width=0.7\textwidth]{imgs/kom_reduction.png}
+  \end{figure}
+\end{onlyenv}
 \end{frame}
 \begin{frame}[fragile]
   \frametitle{Kompileret program}
-  \begin{lstlisting}[language=futhark]
-    reduce (+) 0 as
-  \end{lstlisting}
   Hver program instance kan lave siden egen reduktion.
   \begin{lstlisting}[language=ispc]
     int acc = 0;
@@ -136,7 +168,10 @@ Givet et input array
       int res = acc + a;
       acc = res;
     }
-    foreach_active{i = 0 ... programCount} {
+  \end{lstlisting}
+  Derefter reduceres over resultaterne produceret af et \textit{gang}
+  \begin{lstlisting}[language=ispc]
+    forneach_active{i = 0 ... programCount} {
       uniform int a = extract(acc, i);
       uniformint res = uni_acc + a
       uni_acc = res;
@@ -146,15 +181,132 @@ Givet et input array
   %Nævn der ikke er en garanti for rækkefølgen af program instansernes operatioenr
 
 \end{frame}
+\begin{frame}[fragile]
+  \frametitle{Associative redomap}
+  \begin{block}{Associative reduktioner leder til delvis SIMD udnyttelse}
+    \begin{enumerate}
+    \item Den binære operator skal påføres i specifik rækkefølge
+    \item Vi kan ikke lade hver \textit{program instance} arbejde på sit eget segment
+    \item Mapping functionen bliver vektoriseret og selve \texttt{reduce} kører sekventielt
+    \end{enumerate}
+  \end{block}
+  Vi håndterer korrekt nested parallelisme og sekventialiserede SOACs ved at \textit{sekventialisere} selve \texttt{reduce} operatoren
+  \begin{lstlisting}[language=ispc]
+    uniform int scalar_accum = neutral;
+    foreach (i = 0 ... size) {
+      int elem_i = arr[i];
+      int mapped = map_op(elem_i);
+      foreach_active (j) {
+        uniform int elem_j = extract(mapped, j);
+        scalar_accum = reduce_op(scalar_accum, elem_j); }
+    }
+    return scalar_accum;
+  \end{lstlisting}
+
+\end{frame}
 
 \begin{frame}[fragile]
-  \frametitle{Associative reduktioner}
-  Rækkefølgen af den binære operator har betydning
+  \frametitle{Redomap på en \textit{mapped} operator}
+  \begin{block}{Mapped operator}
+    \begin{enumerate}
+    \item En \texttt{reduce} eller \texttt{scan} med en \texttt{map2} som operator
+    \item Særtilfælde hvor operatoren er på arrays, og vi generer ISPC kode
+    \end{enumerate}
+  \end{block}
+  % \begin{block}{Mapped operator er et særtilfælde af der handles effektivt}
+  %   \begin{enumerate}
+  %   \item Særtilfælde der kan håndterer operatorer der tager arrays
+  %   \item Håndteres ofte effektivit da vi kan vektorisere den indre operator
+  %   \end{enumerate}
+  % \end{block}
+  Simpelt program der tager en \textit{mapped} operator i form af \texttt{map2}
+  \begin{lstlisting}[language=futhark]
+    def main (n: i64) (m: i64) : [m]i64 =
+      let xss = replicate n (iota m)
+      in reduce (map2 (+)) (replicate m 0) xss
+    \end{lstlisting}
 \end{frame}
 
-%% Slide 32
-\begin{frame}
-  \frametitle{Memory allocations}
+\begin{frame}[fragile]
+  \frametitle{Redomap \textit{mapped} operator eksempel}
+  \begin{center}
+  \only<+>{\includegraphics[width=0.7\textwidth]{imgs/mapped1}}
+  \only<+>{\includegraphics[width=0.7\textwidth]{imgs/mapped2}}
+  \only<+>{\includegraphics[width=0.7\textwidth]{imgs/mapped3}}
+  \only<+>{\includegraphics[width=0.7\textwidth]{imgs/mapped4}}
+  \only<+>{\includegraphics[width=0.7\textwidth]{imgs/mapped5}}
+  \end{center}
 \end{frame}
 
+\begin{frame}[fragile]
+  \frametitle{Redomap \textit{mapped} operator algoritme}
+  Observationer
+  \begin{enumerate}
+    \item Applikationen af $+$ er uafhængig af \texttt{map2} loop iterationer
+    \item Derved kan man lade $+$ kører ``på tværs'' af hvert \texttt{reduce} loop iterationer
+    \item Vi kan derved vektorisere selve den \textit{mapped} operator \texttt{map2} sikkert
+  \end{enumerate}
+  \begin{block}{redomap med en mapped operator}
+    \begin{lstlisting}[language=ispc]
+      uniform int acc_mem[m] = //some memory
+      for(uniform int scan_i = 0; scan_i < i; sca_i++) {
+        foreach(nest_i = 0 ... m) {
+          x_acc = acc_mem[nest_i];
+          x = mem[nest_i];
+          int res = x_acc + x;
+          acc_mem[nest_i] = res;
+        }
+      }
+    \end{lstlisting}
+  \end{block}
+\end{frame}
+
+%% Slide 3
+\begin{frame}[fragile]
+  \frametitle{Konklusion}
+  Er vores algoritmer en god udvidelse af MC flattening?
+  \begin{enumerate}
+    \item<+-> Sekventialiserede SOACs giver oftte \textit{scatter} og \textit{gather} operationer\\
+      \begin{onlyenv}<+-3>
+        Matrix vector multiplication programmet
+      \begin{columns}
+        \begin{column}{0.49\textwidth}
+        \begin{lstlisting}[language=ispc, xleftmargin=-15mm, breaklines=false]
+        //Sekventialiseret
+        foreach(map_i = 0 ... end) {
+          for(int red_i = 0) {
+            x = mem[map_i * n + red_i];
+          }
+        }
+\end{lstlisting}
+        \end{column}
+        \begin{column}{0.49\textwidth}
+        \begin{lstlisting}[language=ispc, xleftmargin=-15mm, breaklines=false]
+        //Nested reduce
+        for(red_i = 0 ... end) {
+          x = mem[map_i * n + red_i];
+        }
+\end{lstlisting}
+          \end{column}
+    \end{columns}
+  \end{onlyenv}
+    \item<+-> Dårlig cache lokalitet ved sekventialiserede SOACs. %lav lige issmalle over i C
+        \begin{onlyenv}<+>
+        \begin{table}[]
+        \begin{tabular}{ll|llll|}
+        \cline{3-6}
+                                     &  & \multicolumn{4}{l|}{Program instance}                                                    \\ \hline
+        \multicolumn{1}{|l|}{red\_i} &  & \multicolumn{1}{l|}{0} & \multicolumn{1}{l|}{1}    & \multicolumn{1}{l|}{2}      & 3     \\ \cline{1-1} \cline{3-6}
+        \multicolumn{1}{|l|}{0}      &  & \multicolumn{1}{l|}{0} & \multicolumn{1}{l|}{5220} & \multicolumn{1}{l|}{10440}  & 15660 \\ \cline{1-1} \cline{3-6}
+        \multicolumn{1}{|l|}{1}      &  & \multicolumn{1}{l|}{1} & \multicolumn{1}{l|}{5221} & \multicolumn{1}{l|}{10441}  & 15661 \\ \cline{1-1} \cline{3-6}
+        \multicolumn{1}{|l|}{2}      &  & \multicolumn{1}{l|}{2} & \multicolumn{1}{l|}{5222} & \multicolumn{1}{l|}{10442}  & 15662 \\ \cline{1-1} \cline{3-6}
+        \multicolumn{1}{|l|}{3}      &  & \multicolumn{1}{l|}{3} & \multicolumn{1}{l|}{5223} & \multicolumn{1}{l|}{10443,} & 15663 \\ \hline
+        \end{tabular}
+        \end{table}
+        \end{onlyenv}
+    \item<+-> Undersøge muligheden for kun og vektorisere den inderste SOAC ved sekventialiserede SOACs
+    \item<+-> Vi har på en let måde fået ekstra speedup på multicore bagenden uden at ændre tidligere stadier af compileren
+    \item Identificeret steder hvor vi kan lave forbedringer til compileren, for at gøre memory accesses hurtigere
+  \end{enumerate}
+\end{frame}
 \end{document}
