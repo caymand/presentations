@@ -26,65 +26,147 @@
 \end{frame}
 
 %% Slide 1
-\begin{frame}
-MC IR indeholder to versioner af hver SOAC
-  \frametitle{Multicore flattening background}
-  \begin{figure}[H]
-    \centering
-    \includegraphics[height=0.7\textheight]{imgs/compileroverview.png}
-  \end{figure}
-\end{frame}
-
 \begin{frame}[fragile]
   \frametitle{Multicore flattening - sekventielle og parallelle SOACs}
-  Et Futhark matrix-vector multiplication program kunne skrives som
-  \begin{lstlisting}[language=futhark]
+  \begin{onlyenv}<+->
+    Et Futhark matrix-vector multiplication program kunne skrives som
+\begin{lstlisting}[language=futhark]
     def main m n  (X:[m][n]i32)  (v:[n]i32)  =
       map (\x ->
         reduce (+) 0 (map2 (*) x v)
       ) X
-    \end{lstlisting}
-  Programmet har ``nested'' parallelisme grundet den indre \texttt{reduce}
-  \begin{enumerate}
-    \begin{onlyenv}<2-2>
-    \item Hver indre SOAC er blevet sekventialiseret
-      \begin{lstlisting}[language=ispc, xleftmargin=-15mm]
-        for(int map_i = 0; i < map_end; map_i++) {
-          int red_res = 0; //Neutral element
-          for(int red_i = 0;  red_end; red_i++) {
-            int x = mem[map_i * n + red_i];
-            int v_i = mem[red_i];
-            int mul_res = x * v_i;
-            red_res = mulres + red_res;
-          }
-          mem[map_i] = red_res;
-        }
 \end{lstlisting}
   \end{onlyenv}
-    \begin{onlyenv}<3-3>
-    \item De indre SOACs er uberørte og kører i parallel på flere kerner
-      \begin{lstlisting}[language=ispc, xleftmargin=-15mm]
-        //map
-        for(int map_i = 0; i < map_end; map_i++) {
-          // schedule work for the nested reduce
-          mem[map_i] = reduce_res;
-        }
-        //reduce
-        for(int red_i = 0;  red_end; red_i++) {
-          int x = mem[map_i * n + red_i];
-          int v_i = mem[red_i];
-          int mul_res = x * v_i;
-          red_res = mulres + red_res;
-        }
-      \end{lstlisting}
-      \end{onlyenv}
+  \only{Hver og bemærke ved programmet}<+->
+  \begin{enumerate}
+    \item<+-> To parallel SOACs
+    \item<+-> En ydre parallel \texttt{map}
+    \item<+-> En \textit{nested} \texttt{reduce}
   \end{enumerate}
-  \only{Den nestede SOAC bliver kundt valgt hvis den ydre SOAC har færre iterationer end antal logiske kerne på CPUen}<4->
-    %Hvis den ydre \texttt{map} indeholder flere iterationer end antal logiske kerner på CPUen sekventialiseres \texttt{reduce}
 
+  \only{Hvordan kan vi afvikle det parallelt på en CPU?}<+->
+  \begin{itemize}
+    \item<+-> Multicore bagenden kan vælge to metode
+  \end{itemize}
+   % Programmet har ``nested'' parallelisme grundet den indre \texttt{reduce}
+%   \begin{enumerate}
+%     \begin{onlyenv}<2-2>
+%     \item Hver indre SOAC er blevet sekventialiseret
+% \begin{lstlisting}[language=ispc, xleftmargin=-15mm]
+%       parfor(i = 0; i < n_cores; i++) {
+%         for(int map_i = 0; i < m; map_i++) {
+%           int red_res = 0; //Neutral element
+%           for(int red_i = 0;  red_i < n; red_i++) {
+%             int x = mem[map_i * n + red_i];
+%             int v_i = mem[red_i];
+%             int mul_res = x * v_i;
+%             red_res = mulres + red_res;
+%           }
+%           mem[map_i] = red_res;
+%         }
+%       }
+% \end{lstlisting}
+%   \end{onlyenv}
+%     \begin{onlyenv}<3-3>
+%     \item De indre SOACs er uberørte og kører i parallel på flere kerner
+%       \begin{lstlisting}[language=ispc, xleftmargin=-15mm]
+%       parfor() {
+%         for(int map_i = 0; i < m; map_i++) {
+%           // schedule work for the nested reduce
+%           mem[map_i] = reduce_res;
+%         }
+%       }
+%       parfor{
+%         for(int red_i = 0;  red_i < n; red_i++) {
+%           int x = mem[map_i * n + red_i];
+%           int v_i = mem[red_i];
+%           int mul_res = x * v_i;
+%           red_res = mulres + red_res;
+%         }
+%       }
+%       \end{lstlisting}
+%       \end{onlyenv}
+%   \end{enumerate}
+%   \begin{enumerate}
+%     \item<4-> Hvis $m < n_{cores}$ så er der ikke nok arbejde til at ``mætte'' alle CPU kerner. Dette bruges som heuristik for at vælge mellem de to versioner.
+    %Hvis den ydre \texttt{map} indeholder flere iterationer end antal logiske kerner på CPUen sekventialiseres \texttt{reduce}
 \end{frame}
+
 \begin{frame}[fragile]
-  \frametitle{Kan vi udnytte mere parallelisme?}
+  \frametitle{Multicore flattening - sekventielle og parallelle SOACs}
+  \begin{onlyenv}<+->
+    Kør \texttt{map} parallelt, og den indre \texttt{reduce} kan blive scheduleret ud til ledige tråde
+\begin{lstlisting}[language=ispc, xleftmargin=-15mm]
+       parfor{
+         for(int map_i = 0; i < m; map_i++) {
+           // schedule work for the nested reduce
+           mem[map_i] = reduce_res;
+         }
+       }
+       parfor{
+         for(int red_i = 0;  red_i < n; red_i++) {
+           int x = mem[map_i * n + red_i];
+           int v_i = mem[red_i];
+           int mul_res = x * v_i;
+           red_res = mulres + red_res;
+         }
+       }
+\end{lstlisting}
+  \end{onlyenv}
+  \begin{onlyenv}<+->
+    CPU har forholdsvist få kerner
+    \begin{itemize}
+      \item<+-> Hvad hvis \texttt{map} indeholdte flere iterationer end antal logiske kerner?
+      \item<+-> Brug dette som optimisation til at lave ``flattening''
+    \end{itemize}
+  \end{onlyenv}
+\end{frame}
+
+\begin{frame}[fragile]
+  \frametitle{Multicore flattening - sekventielle og parallelle SOACs}
+  \begin{onlyenv}<+->
+    Man kan kører kun selve \texttt{map} i parallel på alle de logiske kerner, og lade \texttt{reduce} blive sekvententialiseret
+\begin{lstlisting}[language=ispc, xleftmargin=-15mm]
+       parfor(i = 0; i < n_cores; i++) {
+         for(int map_i = 0; i < m; map_i++) {
+           int red_res = 0; //Neutral element
+           for(int red_i = 0;  red_i < n; red_i++) {
+             int x = mem[map_i * n + red_i];
+             int v_i = mem[red_i];
+             int mul_res = x * v_i;
+             red_res = mulres + red_res;
+           }
+           mem[map_i] = red_res;
+         }
+       }
+\end{lstlisting}
+  \end{onlyenv}
+  \only{Hvis $ n_{cores} < m$, så bliver alle CPU kerner mættede}<+->
+\end{frame}
+% \begin{frame}
+% MC IR indeholder to versioner af hver SOAC
+%   \frametitle{Multicore flattening background}
+%   \begin{figure}[H]
+%     \centering
+%     \includegraphics[height=0.7\textheight]{imgs/compileroverview.png}
+%   \end{figure}
+% \end{frame}
+
+\begin{frame}
+  \frametitle{Multicore flattening - sekventielle og parallelle SOACs}
+  \only{De to versioner bruges af multicore bagenden, og bliver valgt på runtime}<+->
+  \begin{enumerate}
+    \item<+-> Den flattenede/sekventialiserede version vælges hvis der er nok iterationer på den yderste SOAC til at mætte CPU kernerne
+    \item<+-> Den uberørte parallelle version vælges ellers.
+  \end{enumerate}
+  \only{Kan vi finde mere parallelisme?}<+->
+  \begin{itemize}
+    \item<+-> Udnyttelse af SIMD indenfor hver tråd
+  \end{itemize}
+\end{frame}
+
+\begin{frame}[fragile]
+  \frametitle{Udvidelse af multicore flattening}
   \only{Brug ISPC til at udvide både de sekventielle og nestede SOACs}<+->
   \begin{enumerate}
     \item<+-> Hver tråds arbejde skal køre i ISPC - en såkaldt \textit{ISPC kernel}
@@ -92,9 +174,11 @@ MC IR indeholder to versioner af hver SOAC
   \end{enumerate}
   \only{Vi prøvede forskellige måde at udnytte  language-c-quote til at generere selve ISPC koden}<+->
   \begin{enumerate}
-    \item<+-> Genrer C kode og lav makroer i ISPC
-          \begin{lstlisting}[language=ispc, xleftmargin=-20mm]
+    \item<+-> Generer C kode og misbrug makroer til at lave ISPC kode
+          %override c keywords - qualifiersJJ
+\begin{lstlisting}[language=ispc, xleftmargin=-20mm]
             #define auto uniform
+            auto int foo = free->foo;
           \end{lstlisting}
     \item<+-> Udvid language-c-quote med ISPC sprog konstruktioner
           \begin{lstlisting}[xleftmargin=-20mm]
@@ -211,7 +295,7 @@ MC IR indeholder to versioner af hver SOAC
     \item<+-> Den ene program instance regner $2+4+6+8$
     \item<+-> Den anden regner $1+3+5+7$
   \end{enumerate}
-  Derved bliver vi nødt til at håndtere generelle associative operatorer anderledes
+  \only{Derved bliver vi nødt til at håndtere generelle associative operatorer anderledes}<+>
 \end{frame}
 
 \begin{frame}[fragile]
@@ -246,7 +330,7 @@ MC IR indeholder to versioner af hver SOAC
   \begin{onlyenv}<+->
     \begin{block}{Mapped operator}
       \begin{enumerate}
-        \item En \texttt{reduce} eller \texttt{scan} med en \texttt{map2} som operator
+        \item Kan være en \texttt{reduce} eller \texttt{scan} med en \texttt{map2} som operator
         \item Særtilfælde hvor operatoren er på arrays, og vi generer ISPC kode
       \end{enumerate}
     \end{block}
@@ -262,7 +346,7 @@ MC IR indeholder to versioner af hver SOAC
 \begin{lstlisting}[language=futhark]
   entry mapped_plus [m][n] (X: [m][n]f32) =
     let a = replicate n 0
-    in reduce (map2 (f32.min)) a X
+    in reduce (map2 (+)) a X
 
 \end{lstlisting}
   \end{onlyenv}
@@ -284,8 +368,8 @@ MC IR indeholder to versioner af hver SOAC
   Observationer
   \begin{enumerate}
     \item<+-> Applikationen af $+$ er uafhængig af \texttt{map2} loop iterationer
-    \item<+-> Derved kan man lade $+$ kører ``på tværs'' af hvert \texttt{reduce} loop iterationer
-    \item<+-> Vi kan derved vektorisere selve den \textit{mapped} operator \texttt{map2} sikkert
+    \item<+-> Istedet kører $+$ ``på tværs'' af hvert \texttt{reduce} loop iterationer
+    \item<+-> Vi kan derved sikkert vektorisere selve $+$ operatoren
   \end{enumerate}
   \begin{onlyenv}<+->
     \begin{block}{redomap med en mapped operator}
@@ -306,18 +390,27 @@ MC IR indeholder to versioner af hver SOAC
 
 %% Slide 3
 \begin{frame}[fragile]
-  \frametitle{Konklusion}
-  Er vores algoritmer en god udvidelse af MC flattening?
+  \frametitle{Kombinering af MC flattening og vektoriserede algoritmer}
+  \only{Er vores algoritmer en god udvidelse af MC flattening?}<+->
   \begin{enumerate}
     \item<+-> Sekventialiserede SOACs giver oftte \textit{scatter} og \textit{gather} operationer\\
       \begin{onlyenv}<+-3>
         Matrix vector multiplication programmet
+        \begin{lstlisting}[language=futhark]
+    def main m n  (X:[m][n]i32)  (v:[n]i32)  =
+      map (\x ->
+        reduce (+) 0 (map2 (*) x v)
+      ) X
+\end{lstlisting}
+      \end{onlyenv}
+      \begin{onlyenv}<3-7>
       \begin{columns}
         \begin{column}{0.49\textwidth}
         \begin{lstlisting}[language=ispc, xleftmargin=-15mm, breaklines=false]
         //Sekventialiseret
         foreach(map_i = 0 ... end) {
-          for(int red_i = 0) {
+          for(uniform int red_i = 0;
+              red_i < n; red_i++) {
             x = mem[map_i * n + red_i];
           }
         }
@@ -326,13 +419,28 @@ MC IR indeholder to versioner af hver SOAC
         \begin{column}{0.49\textwidth}
         \begin{lstlisting}[language=ispc, xleftmargin=-15mm, breaklines=false]
         //Nested reduce
-        for(red_i = 0 ... end) {
+        uniform map_i; uniform n;
+        ...
+        foreach(red_i = 0 ... end) {
           x = mem[map_i * n + red_i];
         }
 \end{lstlisting}
           \end{column}
-    \end{columns}
+        \end{columns}
+      \end{onlyenv}
+  \begin{onlyenv}<+->
+    For alle $n \neq 1$ vil det give en \textit{gather} instruction da memory load ikke vil være \textit{coherent}
   \end{onlyenv}
+  \begin{onlyenv}<+>
+    $$
+    \texttt{map\_i} \cdot n =\left<0, 1, 2, 3 \right> \cdot 2 = \left<0,2,4,6\right>
+    $$
+  \end{onlyenv}
+
+    \item<+-> Nested parallelisme giver derimod vector loads grundet \textit{coherent} memory access
+          \begin{onlyenv}<+>
+            $$red\_i=\left<0, 1, 2, 3\right>$$
+            \end{onlyenv}
 
   \begin{onlyenv}<+>
     \begin{table}[H]
@@ -344,54 +452,44 @@ MC IR indeholder to versioner af hver SOAC
       \end{tabular}
     \end{table}
   \end{onlyenv}
+    \item<+-> Mapped operator giver gode loads/store for sekventialiserede SOACs
+      \begin{onlyenv}<+>
+        \begin{lstlisting}[language=futhark]
+          entry mapped_plus [m][n] (X: [m][n]f32) : [n]f32 =
+            let a = replicate n 0
+            in reduce (map2 (f32.min)) a X
+        \end{lstlisting}
+      \end{onlyenv}
+      \begin{onlyenv}<+>
+       \begin{lstlisting}[language=ispc, xleftmargin=-15mm]
+             uniform int acc_mem[m] = //some memory
+             for(uniform int red_i = 0; scan_i < i; sca_i++) {
+               foreach(nest_i = 0 ... m) {
+                 x_acc = acc_mem[nest_i];
+                 x = mem[red_i * n + nest_i];
+                 int res = x_acc + x;
+                 acc_mem[nest_i] = res;
+               }
+             }
+       \end{lstlisting}
+      \begin{table}[H]
+      \begin{tabular}{|l|l|l|l|l|}
+      \hline
+      Benchmark                                                  &  & Multicore (ms) & Ours (ms) & Speedup \\ \cline{1-1} \cline{3-5}
+      \begin{tabular}[c]{@{}l@{}}$m=100000, n=1000$\end{tabular} &  & 3.6             & 1.1       & x3.23   \\ \cline{1-1} \cline{3-5}
+      \begin{tabular}[c]{@{}l@{}}$m=1000, n=100000$\end{tabular} &  & 84             & 81.2        & x1.03   \\ \hline
+      \end{tabular}
+      \end{table}
 
-    % \item<+-> Dårlig cache lokalitet ved sekventialiserede SOACs. %lav lige issmalle over i C
-    %       \begin{onlyenv}<+>
-    %         \begin{table}[H]
-    %           \begin{tabular}{ll|llll|}
-    %             \cline{3-6}
-    %             &  & \multicolumn{4}{l|}{Program instance}                                                    \\ \hline
-    %             \multicolumn{1}{|l|}{red\_i} &  & \multicolumn{1}{l|}{0} & \multicolumn{1}{l|}{1}    & \multicolumn{1}{l|}{2}      & 3     \\ \cline{1-1} \cline{3-6}
-    %             \multicolumn{1}{|l|}{0}      &  & \multicolumn{1}{l|}{0} & \multicolumn{1}{l|}{5220} & \multicolumn{1}{l|}{10440}  & 15660 \\ \cline{1-1} \cline{3-6}
-    %             \multicolumn{1}{|l|}{1}      &  & \multicolumn{1}{l|}{1} & \multicolumn{1}{l|}{5221} & \multicolumn{1}{l|}{10441}  & 15661 \\ \cline{1-1} \cline{3-6}
-    %             \multicolumn{1}{|l|}{2}      &  & \multicolumn{1}{l|}{2} & \multicolumn{1}{l|}{5222} & \multicolumn{1}{l|}{10442}  & 15662 \\ \cline{1-1} \cline{3-6}
-    %             \multicolumn{1}{|l|}{3}      &  & \multicolumn{1}{l|}{3} & \multicolumn{1}{l|}{5223} & \multicolumn{1}{l|}{10443,} & 15663 \\ \hline
-    %           \end{tabular}
-    %         \end{table}
-    %       \end{onlyenv}
-    \item<+-> Undersøge muligheden for kun og vektorisere den inderste SOAC ved sekventialiserede SOACs
-          \begin{onlyenv}<+>
-\begin{lstlisting}[language=futhark]
-entry mapped_plus [m][n] (X: [m][n]f32) =
-  let a = replicate n 0
-  in reduce (map2 (f32.min)) a X
-\end{lstlisting}
-          \end{onlyenv}
-  \begin{onlyenv}<+>
-   \begin{lstlisting}[language=ispc, xleftmargin=-15mm]
-         uniform int acc_mem[m] = //some memory
-         for(uniform int red_i = 0; scan_i < i; sca_i++) {
-           foreach(nest_i = 0 ... m) {
-             x_acc = acc_mem[nest_i];
-             x = mem[red_i * n + nest_i];
-             int res = x_acc + x;
-             acc_mem[nest_i] = res;
-           }
-         }
-\end{lstlisting}
-\begin{table}[H]
-\begin{tabular}{|l|l|l|l|l|}
-\hline
-Benchmark                                                  &  & Multicore (ms) & Ours (ms) & Speedup \\ \cline{1-1} \cline{3-5}
-\begin{tabular}[c]{@{}l@{}}$m=1000000, n=100$\end{tabular} &  & 31             & 11        & x2.83   \\ \cline{1-1} \cline{3-5}
-\begin{tabular}[c]{@{}l@{}}$m=100, n=1000000$\end{tabular} &  & 88             & 81        & x1.08   \\ \hline
-\end{tabular}
-\end{table}
-
-  \end{onlyenv}
-
-    \item<+-> Vi har på en let måde fået ekstra speedup på multicore bagenden uden at ændre tidligere stadier af compileren
-    \item<+-> Identificeret steder hvor vi kan lave forbedringer til compileren, for at gøre memory accesses hurtigere
-  \end{enumerate}
+    \end{onlyenv}
+\end{enumerate}
 \end{frame}
+
+  \begin{frame}
+    \frametitle{Konklusion}
+    \begin{enumerate}
+      \item<+-> Vi har på en let måde fået ekstra speedup på multicore bagenden uden at ændre tidligere stadier af compileren
+    \item<+-> Identificeret steder hvor vi kan lave forbedringer til compileren, for at gøre memory accesses hurtigere
+    \end{enumerate}
+  \end{frame}
 \end{document}
