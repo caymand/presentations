@@ -39,9 +39,8 @@
   \end{onlyenv}
   \only{Hver og bemærke ved programmet}<+->
   \begin{enumerate}
-    \item<+-> To parallel SOACs
     \item<+-> En ydre parallel \texttt{map}
-    \item<+-> En \textit{nested} \texttt{reduce}
+    \item<+-> En \textit{nested} \texttt{redomap}
   \end{enumerate}
 
   \only{Hvordan kan vi afvikle det parallelt på en CPU?}<+->
@@ -93,7 +92,7 @@
 \end{frame}
 
 \begin{frame}[fragile]
-  \frametitle{Multicore flattening - sekventielle og parallelle SOACs}
+  \frametitle{Multicore parallelle SOACs}
   \begin{onlyenv}<+->
     Kør \texttt{map} parallelt, og den indre \texttt{reduce} kan blive scheduleret ud til ledige tråde
 \begin{lstlisting}[language=ispc, xleftmargin=-15mm]
@@ -114,16 +113,12 @@
 \end{lstlisting}
   \end{onlyenv}
   \begin{onlyenv}<+->
-    CPU har forholdsvist få kerner
-    \begin{itemize}
-      \item<+-> Hvad hvis \texttt{map} indeholdte flere iterationer end antal logiske kerner?
-      \item<+-> Brug dette som optimisation til at lave ``flattening''
-    \end{itemize}
+    Observation: En CPU har forholdsvist få kerner, og det er nemt og ``fylde'' dem med arbejde
   \end{onlyenv}
 \end{frame}
 
 \begin{frame}[fragile]
-  \frametitle{Multicore flattening - sekventielle og parallelle SOACs}
+  \frametitle{Multicore flattening af SOACs}
   \begin{onlyenv}<+->
     Man kan kører kun selve \texttt{map} i parallel på alle de logiske kerner, og lade \texttt{reduce} blive sekvententialiseret
 \begin{lstlisting}[language=ispc, xleftmargin=-15mm]
@@ -197,13 +192,12 @@
 
 \begin{frame}
   \frametitle{Algoritmer til at udvide Futhark MC flattening}
-  Hvordan kan man vektorisere de to forskellige versioner af en SOAC?
+  \only{Hvordan kan man vektorisere de to forskellige versioner af en SOAC?}<+->
   \begin{enumerate}
     %\item Vores kodegenerator er ``dum'' omkring hvorvidt vi laver kode for en nested eller sekventialiseret SOAC
   % \item Begge versioner af en given SOAC kan tage gavn af data parallelisme
   % \item Vi udnytter et ekstra lag af parallelisme ved at lade hver tråd udnytte data parallelisme
   \item<+-> Giv hver SOAC en specifik vectoriseret algoritme afhængigt af operatoren
-  \item<+-> Håndter scheduling fra ISPC
   \item<+-> Særligt har redomap fire forskellige kodegenereringer
     \begin{itemize}
     \item<+-> kommutative \texttt{reduce}
@@ -259,6 +253,7 @@
       acc = res;
     }
 \end{lstlisting}
+
   \begin{figure}[H]
     \centering
     \includegraphics[width=0.5\textwidth]{imgs/kom_reduce1.png}
@@ -330,7 +325,7 @@
   \begin{onlyenv}<+->
     \begin{block}{Mapped operator}
       \begin{enumerate}
-        \item Kan være en \texttt{reduce} eller \texttt{scan} med en \texttt{map2} som operator
+        \item Kan være en \texttt{reduce} med en \texttt{map2} som operator
         \item Særtilfælde hvor operatoren er på arrays, og vi generer ISPC kode
       \end{enumerate}
     \end{block}
@@ -407,7 +402,7 @@
       \begin{columns}
         \begin{column}{0.49\textwidth}
         \begin{lstlisting}[language=ispc, xleftmargin=-15mm, breaklines=false]
-        //Sekventialiseret
+        //Sekventialiseret/Flattened
         foreach(map_i = 0 ... end) {
           for(uniform int red_i = 0;
               red_i < n; red_i++) {
@@ -428,7 +423,7 @@
           \end{column}
         \end{columns}
       \end{onlyenv}
-  \begin{onlyenv}<+->
+  \begin{onlyenv}<+>
     For alle $n \neq 1$ vil det give en \textit{gather} instruction da memory load ikke vil være \textit{coherent}
   \end{onlyenv}
   \begin{onlyenv}<+>
@@ -437,7 +432,7 @@
     $$
   \end{onlyenv}
 
-    \item<+-> Nested parallelisme giver derimod vector loads grundet \textit{coherent} memory access
+    \item<+-> Nested parallelisme vil derimod også have coherent memory accesses
           \begin{onlyenv}<+>
             $$red\_i=\left<0, 1, 2, 3\right>$$
             \end{onlyenv}
@@ -452,9 +447,9 @@
       \end{tabular}
     \end{table}
   \end{onlyenv}
-    \item<+-> Mapped operator giver gode loads/store for sekventialiserede SOACs
+    \item<+-> Soacs med mapped operator kan give loads/store
       \begin{onlyenv}<+>
-        \begin{lstlisting}[language=futhark]
+        \begin{lstlisting}[language=futhark, xleftmargin=-15mm]
           entry mapped_plus [m][n] (X: [m][n]f32) : [n]f32 =
             let a = replicate n 0
             in reduce (map2 (f32.min)) a X
@@ -466,8 +461,8 @@
              for(uniform int red_i = 0; scan_i < i; sca_i++) {
                foreach(nest_i = 0 ... m) {
                  x_acc = acc_mem[nest_i];
-                 x = mem[red_i * n + nest_i];
-                 int res = x_acc + x;
+                 x = mem[red_i * n + nest_i]; //vector load
+                 int res = fmin32(x_acc, x);
                  acc_mem[nest_i] = res;
                }
              }

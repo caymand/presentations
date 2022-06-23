@@ -9,7 +9,7 @@
 
 entry mapped_plus [m][n] (X: [m][n]f32) =
   let a = replicate n 0
-  in reduce (map2 (f32.min)) a X
+  in reduce (map2 (+)) a X
 
 -- ==
 -- entry: mapped_min
@@ -33,7 +33,7 @@ entry mapped_min [m][n] (X: [m][n]f32) =
 
 entry mapped_plus_big [m][n] (X: [m][n]f64) =
   let a = replicate n 0
-  in reduce (map2 (f64.min)) a X
+  in reduce (map2 (+)) a X
 
 -- ==
 -- entry: mapped_min_big
